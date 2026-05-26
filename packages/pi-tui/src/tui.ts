@@ -1012,12 +1012,16 @@ export class TUI extends Container {
 		const prevViewportBottom = prevViewportTop + height - 1;
 		const moveTargetRow = appendStart ? firstChanged - 1 : firstChanged;
 		if (moveTargetRow > prevViewportBottom) {
+			const scroll = moveTargetRow - prevViewportBottom;
+			if (scroll > height) {
+				fullRender(true);
+				return;
+			}
 			const currentScreenRow = Math.max(0, Math.min(height - 1, hardwareCursorRow - prevViewportTop));
 			const moveToBottom = height - 1 - currentScreenRow;
 			if (moveToBottom > 0) {
 				buffer += `\x1b[${moveToBottom}B`;
 			}
-			const scroll = moveTargetRow - prevViewportBottom;
 			buffer += "\r\n".repeat(scroll);
 			prevViewportTop += scroll;
 			viewportTop += scroll;

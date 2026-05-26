@@ -187,6 +187,8 @@ let hasToolsInTurn = false;
 let pinnedBorder: DynamicBorder | undefined;
 // Reference to the pinned markdown component below the border
 let pinnedTextComponent: Markdown | undefined;
+// Hysteresis counter — require several consecutive "unpin" decisions before tearing down
+let unpinHoldoff = 0;
 
 function mergeToolPhases(phases: ToolExecutionPhase[]): ToolExecutionPhase[] {
 	const merged: ToolExecutionPhase[] = [];
@@ -311,6 +313,7 @@ export async function handleAgentEvent(host: InteractiveModeStateHost & {
 		lastContentLength = 0;
 		lastPinnedText = "";
 		hasToolsInTurn = false;
+		unpinHoldoff = 0;
 		renderedSegments = [];
 		orphanedSegments = [];
 		if (pinnedBorder) pinnedBorder.stopSpinner();
@@ -695,6 +698,7 @@ export async function handleAgentEvent(host: InteractiveModeStateHost & {
 					}
 
 					if (picked) {
+						unpinHoldoff = 0;
 						if (picked.text !== lastPinnedText) {
 							lastPinnedText = picked.text;
 
@@ -728,16 +732,18 @@ export async function handleAgentEvent(host: InteractiveModeStateHost & {
 							}
 						}
 					} else if (pinnedBorder) {
-						// Every candidate is still visible in the chat scrollback —
-						// tear down the pinned zone so we don't duplicate on-screen text.
-						pinnedBorder.stopSpinner();
-						pinnedBorder = undefined;
-						pinnedTextComponent = undefined;
-						host.pinnedMessageContainer.clear();
-						lastPinnedText = "";
-						if (!host.loadingAnimation) {
-							host.statusContainer.clear();
-							startLoadingAnimation(host);
+						unpinHoldoff++;
+						if (unpinHoldoff >= 4) {
+							pinnedBorder.stopSpinner();
+							pinnedBorder = undefined;
+							pinnedTextComponent = undefined;
+							host.pinnedMessageContainer.clear();
+							lastPinnedText = "";
+							unpinHoldoff = 0;
+							if (!host.loadingAnimation) {
+								host.statusContainer.clear();
+								startLoadingAnimation(host);
+							}
 						}
 					}
 				}
