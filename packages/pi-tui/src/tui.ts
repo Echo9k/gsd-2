@@ -845,7 +845,8 @@ export class TUI extends Container {
 			this.previousLines.length > height &&
 			newLines.length > height &&
 			newLines.length < this.previousLines.length &&
-			this.overlayStack.length === 0
+			this.overlayStack.length === 0 &&
+			this.previousLines.length - newLines.length >= height
 		) {
 			logRedraw(`tall→tall shrink viewport realign (${this.previousLines.length} -> ${newLines.length})`);
 			const newViewportTop = getViewportTop(newLines.length);
@@ -986,16 +987,37 @@ export class TUI extends Container {
 		const previousContentViewportTop = getViewportTop(this.previousLines.length);
 		let clampedToViewport = false;
 		if (firstChanged < previousContentViewportTop) {
-			// First change is above the viewport. Avoid a full screen clear (\x1b[2J)
-			// which causes the bottom panel to flicker. Instead redraw from the actual
-			// viewport top down through the bottom of new content so every visible row
-			// gets the correct line, even if the viewport shifted (content shrank).
-			//
-			// Pick the smaller of the two viewport tops so any row currently on screen
-			// is covered. Force lastChanged to the end of new content so the render loop
-			// repaints the bottom rows that may now hold stale content from the previous
-			// frame (the case that caused "empty screen until next tick" after the clamp).
+			// Changes above the viewport (e.g. context compaction). Check whether
+			// the visible portion actually changed — if only off-screen lines were
+			// modified we can skip the repaint entirely and just update bookkeeping.
 			const newViewportTop = getViewportTop(newLines.length);
+			const visStart = Math.max(newViewportTop, 0);
+			const prevVisStart = Math.max(previousContentViewportTop, 0);
+			const checkLen = Math.min(height, newLines.length - visStart, this.previousLines.length - prevVisStart);
+			let visibleChanged = false;
+			for (let vi = 0; vi < checkLen; vi++) {
+				if (newLines[visStart + vi] !== this.previousLines[prevVisStart + vi]) {
+					visibleChanged = true;
+					break;
+				}
+			}
+			if (!visibleChanged && newLines.length >= height && this.previousLines.length >= height) {
+				// Visible content is identical — silent bookkeeping update
+				this.cursorRow = Math.max(0, newLines.length - 1);
+				this.hardwareCursorRow = this.cursorRow;
+				if (newLines.length < this.maxLinesRendered) {
+					this.maxLinesRendered = newLines.length;
+				} else {
+					this.maxLinesRendered = Math.max(this.maxLinesRendered, newLines.length);
+				}
+				this.previousViewportTop = getViewportTop(this.maxLinesRendered);
+				this.positionHardwareCursor(cursorPos, newLines.length);
+				this.previousLines = newLines;
+				this.previousWidth = width;
+				this.previousHeight = height;
+				return;
+			}
+			// Visible content changed — repaint from viewport top, avoiding \x1b[2J
 			const clampedFirst = Math.max(0, Math.min(previousContentViewportTop, newViewportTop));
 			logRedraw(
 				`firstChanged < viewportTop (${firstChanged} < ${previousContentViewportTop}) — repaint from ${clampedFirst}`,
@@ -1126,12 +1148,10 @@ export class TUI extends Container {
 		// hardwareCursorRow tracks actual terminal cursor position (for movement)
 		this.cursorRow = Math.max(0, newLines.length - 1);
 		this.hardwareCursorRow = finalCursorRow;
-		// Track terminal's working area (grows but doesn't shrink unless cleared).
-		// Exception: when the clamp-to-viewport path repainted shrunk content, the
-		// visible viewport now anchors to newLines.length, so subsequent
-		// computeLineDiff calls need viewportTop = newLines.length - height.
-		// Without this reset, hardwareCursorRow's physical row goes negative.
-		if (clampedToViewport && newLines.length < this.maxLinesRendered) {
+		// Track terminal's working area. Shrink it when content shrinks so that
+		// viewportTop stays aligned — otherwise the next frame's computeLineDiff
+		// uses a stale baseline and triggers a spurious full re-render.
+		if (newLines.length < this.maxLinesRendered) {
 			this.maxLinesRendered = newLines.length;
 		} else {
 			this.maxLinesRendered = Math.max(this.maxLinesRendered, newLines.length);
