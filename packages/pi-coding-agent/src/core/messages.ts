@@ -14,13 +14,13 @@ const CUSTOM_MESSAGE_MIDDLE = `; this is an automated system event, not user inp
 const CUSTOM_MESSAGE_SUFFIX = `
 [end system notification]`;
 
-const COMPACTION_SUMMARY_PREFIX = `The conversation history before this point was compacted into the following summary:
+const COMPACTION_SUMMARY_PREFIX = `The conversation before this point was compacted. The following is a handoff briefing — treat it as authoritative working state. Continue from the "Next Action" section. Do not re-derive decisions or re-read files already listed as processed.
 
-<summary>
+<briefing>
 `;
 
 const COMPACTION_SUMMARY_SUFFIX = `
-</summary>`;
+</briefing>`;
 
 const BRANCH_SUMMARY_PREFIX = `The following is a summary of a branch that this conversation came back from:
 
